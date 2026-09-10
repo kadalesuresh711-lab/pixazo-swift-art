@@ -454,28 +454,6 @@ function Index() {
     setShots((prev) => prev.map((s) => (s.index === index ? { ...s, ...next } : s)));
   }, []);
 
-  async function resume() {
-    const exact = script.trim().length >= 10 ? await loadSaved(scriptKey(script)) : null;
-    const latest = exact ? null : await loadLatestRun<Shot>();
-    const saved = exact ?? latest?.run;
-    if (!saved) return;
-    const resumeScript = saved.script ?? script;
-    if (!resumeScript.trim()) {
-      setError(
-        "This older checkpoint needs its original script pasted once before it can continue.",
-      );
-      return;
-    }
-    const recovered = recoverInterruptedShots(saved.shots);
-    setScript(resumeScript);
-    setBible(saved.bible);
-    setShots(recovered);
-    setNote(
-      `Continuing ${recovered.filter((s) => s.status === "done").length}/${recovered.length} completed panels…`,
-    );
-    await run(recovered, saved.bible, resumeScript);
-  }
-
   /* ---------------------------------------------------------------- */
   /* Generation                                                        */
   /* ---------------------------------------------------------------- */
