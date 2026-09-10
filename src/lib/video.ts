@@ -19,8 +19,8 @@ export type Shot = { url: string; start: number; end: number; prompt?: string | 
 
 export type BuildResult = { kind: "blob"; blob: Blob } | { kind: "file"; fileName: string };
 
-const W = 1280;
-const H = 720;
+const W = 1920;
+const H = 1080;
 const FPS = 24;
 /** Cross-fade length between two shots (seconds). */
 const XF = 0.7;
@@ -230,7 +230,8 @@ export async function buildVideo(
 
   const width = opts.width ?? W;
   const height = opts.height ?? H;
-  const bitrate = opts.bitrate ?? (width >= 1920 ? 8_000_000 : 4_500_000);
+  // Crisp output: generous bitrate so line art and screentones stay sharp.
+  const bitrate = opts.bitrate ?? (width >= 1920 ? 16_000_000 : 8_000_000);
 
   const durations = shots.map((s) => Math.max(0, s.end - s.start));
   const panelSeconds = durations.reduce((a, b) => a + b, 0);
@@ -246,9 +247,10 @@ export async function buildVideo(
   // H.264 first (universally playable); VP9 then AV1 as fallbacks so browsers
   // built without proprietary codecs can still export a valid mp4.
   const codecCandidates: { codec: string; mux: "avc" | "vp9" | "av1" }[] = [
-    { codec: "avc1.42003e", mux: "avc" },
-    { codec: "avc1.4d0034", mux: "avc" },
+    // High profile first — noticeably crisper at the same bitrate.
     { codec: "avc1.640034", mux: "avc" },
+    { codec: "avc1.4d0034", mux: "avc" },
+    { codec: "avc1.42003e", mux: "avc" },
     { codec: "avc1.42001f", mux: "avc" },
     { codec: "vp09.00.51.08", mux: "vp9" },
     { codec: "vp09.00.10.08", mux: "vp9" },
