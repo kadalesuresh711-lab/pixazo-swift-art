@@ -6,7 +6,7 @@ import { analyzeScript, renderImage, renderBatch } from "@/lib/manga.functions";
 import { buildTimeline, fmt, scriptEndTime, type Segment } from "@/lib/script";
 import { buildVideo, webCodecsSupported } from "@/lib/video";
 import { isBlankImageUrl } from "@/lib/blank";
-import { loadLatestRun, loadRun, saveRun, type SavedRun } from "@/lib/progress";
+import { loadRun, saveRun, type SavedRun } from "@/lib/progress";
 import { recoverInterruptedShots } from "@/lib/run-recovery";
 
 import { instaKill } from "@/lib/kill.functions";
@@ -985,7 +985,6 @@ function Index() {
     setError(null);
     setSavedTo(null);
     setVideoUrl(null);
-    setDownloadUrl(null);
 
     // Final coverage check: no timestamp may reach the video without its own
     // prompt. A missing prompt means that panel was never really drawn for its
