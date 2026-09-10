@@ -1326,7 +1326,7 @@ async function pause(ms: number): Promise<void> {
   assertActive();
 }
 
-/** Calls Flux.1 Schnell (free tier) at max quality with automatic retries. Always 16:9. */
+/** Calls Flux.1 Schnell (free tier) at balanced quality/speed with retries. Always 16:9. */
 export async function generateImage(
   prompt: string,
   seed: number,
@@ -1342,8 +1342,8 @@ export async function generateImage(
   for (let attempt = 0; attempt < Math.max(1, attempts); attempt++) {
     // A killed run never spends another image credit.
     assertActive();
-    // One key renders one image at a time: this waits for a free key, so at
-    // most ten renders (one per configured key) are ever in flight together.
+    // Each key renders three images at a time: this waits for capacity, so at
+    // most thirty renders are ever in flight together.
     const url = await withImageKey(slot, attempt, async (key) => {
       const gate = killableSignal(IMAGE_REQUEST_TIMEOUT_MS);
       try {
@@ -1361,14 +1361,13 @@ export async function generateImage(
             // wrong time of day, out-of-period objects...). The gateway honours
             // this field, so those guards no longer pollute the positive prompt.
             negative_prompt: negative,
-            // Quality over speed: the maximum step count Schnell accepts, at the
-            // largest 16:9 size the gateway renders (verified: 1920x1088 comes
-            // back at that exact size, roughly twice the detail of 1344x768).
-            num_steps: 8,
+            // Speed over maximum quality: fewer steps at a slightly smaller 16:9
+            // size (1344x768) renders noticeably faster with good detail.
+            num_steps: 4,
             // a fresh seed each attempt, so a blank frame is never re-rolled identically
             seed: seed + attempt * 977,
-            width: 1920,
-            height: 1088,
+            width: 1344,
+            height: 768,
           }),
         });
         if (res.ok) {

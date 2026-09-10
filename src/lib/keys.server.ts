@@ -1,8 +1,8 @@
 /**
  * API key pools.
  *
- * Image keys (Pixazo) are used in parallel — TEN renders at once, and never
- * more: one key renders exactly ONE image at a time. The text key (Agnes AI)
+ * Image keys (Pixazo) are used in parallel — THREE renders per key at once, so
+ * ten keys give thirty images in parallel and never more. The text key (Agnes AI)
  * is read directly from the environment in agnes.server.ts.
  */
 
@@ -41,8 +41,8 @@ export function pickKey(keys: string[], slot: number, attempt = 0): string {
 /* Ten images per key at a time                                        */
 /* ------------------------------------------------------------------ */
 
-/** How many images one key may render simultaneously. */
-export const PER_KEY_CONCURRENCY = 10;
+/** How many images one key may render simultaneously (3 per key -> 30 total). */
+export const PER_KEY_CONCURRENCY = 3;
 
 /** In-flight renders per key. */
 const inFlight = new Map<string, number>();
@@ -68,8 +68,8 @@ function takeFree(keys: string[], slot: number, attempt: number): string | undef
 
 /**
  * Leases capacity on an image key for the duration of `fn`. Each key handles up
- * to PER_KEY_CONCURRENCY renders at once, so with ten keys configured up to a
- * hundred images are generated in parallel; anything beyond that waits.
+ * to PER_KEY_CONCURRENCY renders at once, so with ten keys configured up to
+ * thirty images are generated in parallel; anything beyond that waits.
  */
 export async function withImageKey<T>(
   slot: number,
