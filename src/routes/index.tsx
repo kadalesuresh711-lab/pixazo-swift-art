@@ -435,21 +435,6 @@ function Index() {
   // length the exported video is forced to match.
   const runtime = useMemo(() => scriptEndTime(script), [script]);
 
-  // Offer the latest checkpoint even before the original script is pasted again.
-  useEffect(() => {
-    let alive = true;
-    const lookup =
-      script.trim().length >= 10
-        ? loadSaved(scriptKey(script))
-        : loadLatestRun<Shot>().then((x) => x?.run ?? null);
-    void lookup.then((saved) => {
-      if (alive) setCanResume(!!saved && saved.shots.length > 0 && shots.length === 0);
-    });
-    return () => {
-      alive = false;
-    };
-  }, [script, shots.length]);
-
   const patch = useCallback((index: number, next: Partial<Shot>) => {
     setShots((prev) => prev.map((s) => (s.index === index ? { ...s, ...next } : s)));
   }, []);
