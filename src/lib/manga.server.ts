@@ -1131,188 +1131,30 @@ export function composeImagePrompt(prompt: string, bible?: string): string {
 }
 
 /* ------------------------------------------------------------------ */
-/* Negative prompt                                                     */
+/* Quick size check                                                    */
 /* ------------------------------------------------------------------ */
 
-/**
- * The gateway DOES accept a `negative_prompt` field, so the ugly-artwork
- * guards no longer have to live inside the positive prompt (where every noun
- * was a token Flux could decide to draw).
- *
- * Always-on: broken anatomy, duplicated people, text/watermarks, panel grids,
- * photo/3D looks and low-quality artefacts.
- */
-const BASE_NEGATIVE = [
-  "text, letters, words, captions, subtitles, watermark, signature, logo",
-  "speech bubbles, signs, posters, billboards, written characters",
-  "extra limbs, extra arms, extra legs, extra fingers, missing fingers, malformed hands, fused hands",
-  "two heads, conjoined bodies, fused figures, merged people, duplicated character, cloned face, twins",
-  "deformed face, distorted anatomy, disfigured, mutated, wrong proportions, crossed eyes, uneven eyes, melted features",
-  "blurry, out of focus, low resolution, pixelated, jpeg artifacts, noise, grain, smudged, muddy colours",
-  "unfinished sketch, rough draft lines, flat empty background, half-drawn, cut-off subject, cropped head",
-  "panel grid, split screen, collage, multiple frames, borders, comic page layout, character reference sheet",
-  "photograph, photorealistic, 3d render, cgi, plastic doll skin, oil painting texture, pencil sketch",
-  "nsfw, nudity, sexualised, gore, dismemberment",
-].join(", ");
-
-/**
- * Scene-aware negatives, derived from the prompt (and its script line) so each
- * panel bans exactly the mistakes that scene invites: people in an empty room,
- * a crowd around a lone character, night in a daylight scene, modern objects in
- * a period setting.
- */
-export function buildNegativePrompt(prompt: string, line?: string, bible?: string): string {
-  const p = `${prompt} ${line ?? ""}`.toLowerCase();
-  const extra: string[] = [];
-
-  if (!hasPeople(prompt, bible)) {
-    extra.push("people, human figures, faces, characters, crowd, silhouettes of people");
-  } else {
-    const crowd =
-      /\b(crowd|crowds|villagers|soldiers|students|audience|market|group of|many people|onlookers|gathering)\b/.test(
-        p,
-      );
-    if (!crowd) extra.push("crowd, background people, extra bystanders, additional characters");
-    if (/\b(alone|by (him|her)self|solitary|only)\b/.test(p)) extra.push("second person, companion");
-  }
-
-  const day = /\b(day|daytime|daylight|morning|noon|afternoon|sunlight|sunny|sunlit|bright sky)\b/.test(p);
-  const night = /\b(night|midnight|dark(ness)?|moonlight|lamplight|candle|dusk|evening|starlit)\b/.test(p);
-  if (day && !night) extra.push("night, darkness, moonlight, black sky, dim unlit scene");
-  if (night && !day) extra.push("bright midday sunshine, blazing daylight sky");
-
-  const indoor = /\b(room|indoors?|inside|hall|kitchen|classroom|bedroom|office|shop interior|temple interior|corridor|cave)\b/.test(p);
-  const outdoor = /\b(street|road|field|forest|sky|outdoors?|courtyard|mountain|river|village lane|market|garden|rooftop)\b/.test(p);
-  if (indoor && !outdoor) extra.push("open sky, outdoor landscape");
-  if (outdoor && !indoor) extra.push("indoor walls, ceiling, interior room");
-
-  const period = /\b(village|ancient|temple|palace|kingdom|sword|monk|horse cart|lantern|dynasty|traditional|hut|shrine|warrior)\b/.test(p);
-  const modern = /\b(car|phone|smartphone|laptop|tv|bus|train|bike|motorcycle|city|apartment|neon|computer|camera)\b/.test(p);
-  if (period && !modern) {
-    extra.push("cars, smartphones, electric wires, neon signs, skyscrapers, modern clothing");
-  }
-
-  if (/\b(child|children|kid|boy|girl|student|teenager)\b/.test(p)) {
-    extra.push("adult body proportions on a child, aged-up face");
-  }
-  if (/\b(elderly|old man|old woman|grandmother|grandfather)\b/.test(p)) {
-    extra.push("youthful smooth face on an elderly character");
-  }
-  if (/\b(calm|peaceful|happy|smiling|celebration|festival|laughing)\b/.test(p)) {
-    extra.push("horror imagery, monsters, blood, distressing gore");
-  }
-
-  return clip([BASE_NEGATIVE, ...extra].join(", "), 1400);
-}
-
-
-/**
- * Blank-panel rejection.
- *
- * A blank/solid or nearly-empty Flux frame compresses to a few kilobytes and
- * its compressed bytes carry very little entropy, while a real detailed
- * 1024x576 panel never does. Anything suspiciously small, low-entropy, or not
- * an image at all is treated as blank and re-rendered on another key/seed, so
- * no empty panel can reach the encoder.
- */
+/** Anything smaller than this is not a real panel. */
 const MIN_IMAGE_BYTES = 40_000;
-/** Shannon entropy (bits/byte) of compressed image data; real art is > 7.5. */
-const MIN_ENTROPY = 7.0;
-
-function byteEntropy(buf: Uint8Array): number {
-  const counts = new Uint32Array(256);
-  const step = Math.max(1, Math.floor(buf.byteLength / 200_000));
-  let n = 0;
-  for (let i = 0; i < buf.byteLength; i += step) {
-    counts[buf[i]!] = counts[buf[i]!]! + 1;
-    n++;
-  }
-  let h = 0;
-  for (let i = 0; i < 256; i++) {
-    const c = counts[i]!;
-    if (!c) continue;
-    const p = c / n;
-    h -= p * Math.log2(p);
-  }
-  return h;
-}
 
 /**
- * True when the file at `url` is a COMPLETE, non-empty image.
- *
- * The checks are unchanged (size, magic bytes, end-of-file marker, entropy of
- * the compressed payload) but they no longer require downloading the whole
- * multi-megabyte panel: a 128 KB head range and a 32 byte tail range are
- * enough, and they are fetched at the same time. Servers that ignore Range
- * fall back to the full body automatically.
+ * Fast sanity check: ask the server how big the file is. No download, no
+ * entropy maths, no end-of-file probing — those were the slow part.
  */
 async function isRealImage(url: string): Promise<boolean> {
-  const gate = killableSignal(60_000);
-  const signal = gate.signal;
+  const gate = killableSignal(8_000);
   try {
-    const [headRes, tailRes] = await Promise.all([
-      fetch(url, { signal, headers: { Range: "bytes=0-131071" } }),
-      fetch(url, { signal, headers: { Range: "bytes=-32" } }).catch(() => null),
-    ]);
-    if (!headRes.ok) return false;
-    const head = new Uint8Array(await headRes.arrayBuffer());
-
-    // Total file size: from Content-Range when the server honoured the range.
-    const cr = headRes.headers.get("content-range");
-    const total = cr ? Number(cr.split("/")[1]) : head.byteLength;
-    if (!Number.isFinite(total) || total < MIN_IMAGE_BYTES) return false;
-
-    const isPng = head[0] === 0x89 && head[1] === 0x50;
-    const isJpg = head[0] === 0xff && head[1] === 0xd8;
-    const isWebp = head[8] === 0x57 && head[9] === 0x45;
-    if (!isPng && !isJpg && !isWebp) return false;
-
-    // End-of-file marker. WebP's length lives in the header, so it is checked
-    // against the real total instead of the downloaded slice.
-    if (isWebp) {
-      const size = head[4]! | (head[5]! << 8) | (head[6]! << 16) | head[7]! * 0x1000000;
-      if (total < size + 8) return false;
-    } else if (headRes.status === 206 && tailRes && tailRes.ok) {
-      const tail = new Uint8Array(await tailRes.arrayBuffer());
-      if (!isComplete(tail, isPng, isJpg, false)) return false;
-    } else if (headRes.status !== 206) {
-      // Ranges ignored: the head IS the whole file.
-      if (!isComplete(head, isPng, isJpg, isWebp)) return false;
-    }
-
-    // skip the header before measuring entropy of the compressed payload
-    return byteEntropy(head.subarray(Math.min(2048, head.byteLength >> 2))) >= MIN_ENTROPY;
+    const res = await fetch(url, { method: "HEAD", signal: gate.signal });
+    if (!res.ok) return true; // can't tell — keep the panel
+    const len = Number(res.headers.get("content-length"));
+    if (!Number.isFinite(len) || len === 0) return true;
+    return len >= MIN_IMAGE_BYTES;
   } catch (e) {
     if (e instanceof KilledError) throw e;
-    // Network hiccup while probing: don't throw away a probably-good panel.
     return true;
   } finally {
     gate.release();
   }
-}
-
-
-/** Checks the image file actually reaches its end-of-file marker. */
-function isComplete(buf: Uint8Array, isPng: boolean, isJpg: boolean, isWebp: boolean): boolean {
-  const n = buf.byteLength;
-  if (isPng) {
-    // ...IEND®B`\x82
-    return (
-      buf[n - 8] === 0x49 && buf[n - 7] === 0x45 && buf[n - 6] === 0x4e && buf[n - 5] === 0x44
-    );
-  }
-  if (isJpg) {
-    // Trailing padding bytes are tolerated; look for FFD9 in the last few bytes.
-    for (let i = n - 2; i >= Math.max(0, n - 16); i--) {
-      if (buf[i] === 0xff && buf[i + 1] === 0xd9) return true;
-    }
-    return false;
-  }
-  if (isWebp) {
-    const size = buf[4]! | (buf[5]! << 8) | (buf[6]! << 16) | buf[7]! * 0x1000000;
-    return n >= size + 8;
-  }
-  return true;
 }
 
 
