@@ -1336,7 +1336,7 @@ export async function generateImage(
   line?: string,
 ): Promise<string> {
   const body = composeImagePrompt(prompt, bible).slice(0, 2000);
-  const negative = buildNegativePrompt(prompt, line, bible);
+  void line;
 
   let lastErr = "";
   for (let attempt = 0; attempt < Math.max(1, attempts); attempt++) {
