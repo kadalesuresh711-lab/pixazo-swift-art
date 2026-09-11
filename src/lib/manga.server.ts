@@ -4,9 +4,9 @@ import { textChat } from "./text-engine.server";
 import { assertActive, killableSignal, KilledError } from "./kill-switch.server";
 
 const PIXAZO_URL = "https://gateway.pixazo.ai/flux-1-schnell/v1/getData";
-// The gateway regularly needs 60-75s for one 1920x1088 render, so a single
-// attempt is given a generous ceiling. Anything shorter aborted good renders.
-const IMAGE_REQUEST_TIMEOUT_MS = 180_000;
+// Fast fail: a healthy render returns well inside a minute, so a stuck request
+// is retried on another key instead of blocking a slot for minutes.
+const IMAGE_REQUEST_TIMEOUT_MS = 60_000;
 
 /**
  * Renderer-only art direction. The writing model describes only scene content;
