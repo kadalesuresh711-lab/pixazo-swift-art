@@ -874,7 +874,7 @@ function Index() {
             }),
           );
           const url = res.url;
-          if (url && !(await isBlankImageUrl(url))) {
+          if (url && (!CLIENT_BLANK_CHECK || !(await isBlankImageUrl(url)))) {
             record(shot.index, {
               url,
               prompt: res.prompt ?? prompt,
