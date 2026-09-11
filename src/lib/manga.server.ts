@@ -1357,10 +1357,6 @@ export async function generateImage(
           },
           body: JSON.stringify({
             prompt: body,
-            // Scene-aware ban list (broken anatomy, duplicate people, text,
-            // wrong time of day, out-of-period objects...). The gateway honours
-            // this field, so those guards no longer pollute the positive prompt.
-            negative_prompt: negative,
             // Speed over maximum quality: fewer steps at a slightly smaller 16:9
             // size (1344x768) renders noticeably faster with good detail.
             num_steps: 4,
