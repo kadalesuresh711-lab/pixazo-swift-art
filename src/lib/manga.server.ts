@@ -1389,7 +1389,8 @@ export async function generateImage(
       return null;
     });
     if (url) return url;
-    await pause(200 * (attempt + 1));
+    // Short breather only: long back-offs made panels look stuck.
+    await pause(100);
   }
   throw new Error(`Image generation failed: ${lastErr}`);
 }
